@@ -4,6 +4,8 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
+from shared_utils import summary
+
 # --- Configuration ---
 ALLOWED_EXTENSIONS = {
     '.py', '.tsx', '.css', '.js', '.conf', '.json',
@@ -19,18 +21,6 @@ EXCLUDED_DIRS = {
     'node_modules', '.git', 'dist', 'build', 'out',
     '.vscode', '__pycache__', '.idea', '.venv'
 }
-
-def format_size(size_bytes: int) -> str:
-    """Converts a size in bytes to a human-readable string (KB, MB, GB)."""
-    if size_bytes == 0:
-        return "0 B"
-    power = 1024
-    n = 0
-    power_labels = {0: 'B', 1: 'KB', 2: 'MB', 3: 'GB', 4: 'TB'}
-    while size_bytes >= power and n < len(power_labels) - 1:
-        size_bytes /= power
-        n += 1
-    return f"{size_bytes:.2f} {power_labels[n]}" if n > 0 else f"{int(size_bytes)} {power_labels[n]}"
 
 def get_display_path(file_path: Path, base_dir: Optional[Path]) -> Path:
     """Returns a relative path if possible, otherwise the absolute path."""
@@ -84,7 +74,7 @@ def find_files_to_process(input_dir: Path, code_only: bool, py_only: bool, recur
 
     return files_with_info
 
-def create_concatenated_file(output_file: Path, files: list[tuple[Path, int, Optional[Path]]]):
+def create_concatenated_file(output_file: Path, files: list[tuple[Path, int, Optional[Path]]], summary_text: str):
     """Concatenates the content of the provided files into a single output file."""
     print(f"\n📝 Writing {len(files)} files to '{output_file}'...")
     
@@ -116,7 +106,7 @@ def create_concatenated_file(output_file: Path, files: list[tuple[Path, int, Opt
                     outfile.write(error_message)
 
                 outfile.write("\n\n")
-    
+            outfile.write(summary_text)
     except IOError as e:
         print(f"❌ Error: Could not write to output file '{output_file}': {e}")
         sys.exit(1)
@@ -174,38 +164,32 @@ def main():
         print("\n🤷 No matching files found to concatenate.")
         return
 
-    # Determine Output Name based on the first item provided if not explicitly set
+    first_input = Path(args.inputs[0]).resolve()
+    target_dir_for_git = str(first_input if first_input.is_dir() else first_input.parent)
+
     if args.output:
         output_file = Path(args.output)
     else:
-        first_input = Path(args.inputs[0]).resolve()
         output_name = first_input.name if first_input.is_dir() else first_input.stem
         output_file = Path(f"{output_name}_concat.txt")
 
-    # --- Print the summary of files to be included ---
-    print(f"\nFound {len(files_to_process)} files to include (sorted by size, descending):")
-    total_size_bytes = 0
-    for file_path, size_bytes, base_dir in files_to_process:
-        display_path = get_display_path(file_path, base_dir)
-        
-        # Display folder prefix if applicable
+    file_data_for_summary = []
+    for f_path, size, base_dir in files_to_process:
+        display_path = get_display_path(f_path, base_dir)
         if base_dir:
             display_path = Path(base_dir.name) / display_path
-
-        formatted_size = format_size(size_bytes)
-        print(f"  - {formatted_size.rjust(10)} | {display_path}")
-        total_size_bytes += size_bytes
+        file_data_for_summary.append((str(display_path), size))
+        
+    summary_text = summary(
+        command_args=sys.argv, 
+        files_with_sizes=file_data_for_summary,
+        target_dir=target_dir_for_git
+    )
+    print(summary_text)
     
-    formatted_total_size = format_size(total_size_bytes)
-    print(f"-------------------------------------------")
-    print(f"  Total size: {formatted_total_size.rjust(7)}")
+    create_concatenated_file(output_file, files_to_process, summary_text)
     
-    create_concatenated_file(output_file, files_to_process)
-    
-    final_output_size_bytes = output_file.stat().st_size
-    formatted_output_size = format_size(final_output_size_bytes)
-    
-    print(f"\n✅ Success! Content concatenated into '{output_file.resolve()}' (Size: {formatted_output_size}).")
+    print(f"\n✅ Success! Content concatenated into '{output_file.resolve()}'.")
 
 if __name__ == "__main__":
     main()

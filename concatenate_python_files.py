@@ -7,6 +7,8 @@ import argparse
 from collections import deque
 from typing import List, Set
 
+from shared_utils import summary
+
 def is_local_module(module_path: str, search_folder: str) -> bool:
     """Check if a resolved module path is within the specified search folder."""
     abs_search_folder = os.path.realpath(search_folder)
@@ -33,6 +35,21 @@ def resolve_import_path(module_name: str, current_file_dir: str, search_folder: 
     if os.path.isfile(potential_path_pkg) and is_local_module(potential_path_pkg, search_folder):
         return os.path.realpath(potential_path_pkg)
         
+    if level == 0 and rel_path_parts[0] == os.path.basename(os.path.realpath(search_folder)):
+        fallback_parts = rel_path_parts[1:]
+        if fallback_parts:
+            fb_path_py = os.path.join(base_path, *fallback_parts) + '.py'
+            if os.path.isfile(fb_path_py) and is_local_module(fb_path_py, search_folder):
+                return os.path.realpath(fb_path_py)
+            
+            fb_path_pkg = os.path.join(base_path, *fallback_parts, '__init__.py')
+            if os.path.isfile(fb_path_pkg) and is_local_module(fb_path_pkg, search_folder):
+                return os.path.realpath(fb_path_pkg)
+        else:
+            fb_path_pkg = os.path.join(base_path, '__init__.py')
+            if os.path.isfile(fb_path_pkg) and is_local_module(fb_path_pkg, search_folder):
+                return os.path.realpath(fb_path_pkg)
+                
     return None
 
 class ImportVisitor(ast.NodeVisitor):
@@ -106,7 +123,7 @@ def find_all_dependencies(start_scripts: List[str], search_folder: str) -> Set[s
             
     return all_found_dependencies
 
-def create_concatenated_file(file_list: List[str], search_folder: str, output_filename: str):
+def create_concatenated_file(file_list: List[str], search_folder: str, output_filename: str, summary_text: str):
     """Creates the final text file with all the file contents and headers."""
     header = "=" * 80
     try:
@@ -121,6 +138,7 @@ def create_concatenated_file(file_list: List[str], search_folder: str, output_fi
                     outfile.write("\n\n")
                 except IOError as e:
                     outfile.write(f"!!! ERROR: Could not read file {relative_path}: {e} !!!\n\n")
+            outfile.write(summary_text)
         print(f"Successfully created concatenated file: {output_filename}")
     except IOError as e:
         print(f"Error: Could not write to output file {output_filename}. {e}", file=sys.stderr)
@@ -152,29 +170,31 @@ def main():
         if not os.path.isfile(script):
             parser.error(f"The script '{script}' does not exist or is not a file.")
 
-    print(f"Searching for dependencies in project root: {os.path.realpath(folder)}")
-    print("Starting scripts:")
-    for script in python_scripts:
-        print(f"  - {script}")
-    print("")
-
     all_files = find_all_dependencies(python_scripts, folder)
 
     sorted_deps = sorted(
         list(all_files),
         key=lambda x: (x not in initial_script_paths, x)
     )
-
-    print("Found the following python files to concatenate:")
-    for dep in sorted_deps:
-        print(f"  - {os.path.relpath(dep, folder)}")
-    print("-" * 20)
     
     folder_name = os.path.basename(os.path.normpath(folder))
     output_filename = f"{folder_name}_concatenated.txt"
 
-    create_concatenated_file(sorted_deps, folder, output_filename)
+    # --- NEW: Calculate size and generate summary ---
+    file_data_for_summary = []
+    for dep in sorted_deps:
+        if os.path.isfile(dep):
+            sz = os.path.getsize(dep)
+            file_data_for_summary.append((os.path.relpath(dep, folder), sz))
 
+    summary_text = summary(
+        command_args=sys.argv, 
+        files_with_sizes=file_data_for_summary,
+        target_dir=folder
+    )
+    print(summary_text)
+
+    create_concatenated_file(sorted_deps, folder, output_filename, summary_text)
 
 if __name__ == "__main__":
     main()
