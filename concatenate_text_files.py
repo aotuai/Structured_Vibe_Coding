@@ -32,7 +32,7 @@ def get_display_path(file_path: Path, base_dir: Optional[Path]) -> Path:
     except ValueError:
         return file_path.absolute()
 
-def find_files_to_process(input_dir: Path, code_only: bool, py_only: bool, recursive: bool) -> list[tuple[Path, int, Path]]:
+def find_files_to_process(input_dir: Path, code_only: bool, py_only: bool, recursive: bool, max_size: Optional[int]) -> list[tuple[Path, int, Path]]:
     """
     Finds all files in the directory that match the allowlist and are not in the blocklist.
     Returns a list of tuples containing (file_path, file_size, origin_base_directory).
@@ -68,6 +68,9 @@ def find_files_to_process(input_dir: Path, code_only: bool, py_only: bool, recur
             if file_path.name.lower() in ALLOWED_FILENAMES or file_path.suffix.lower() in extensions_to_check:
                 try:
                     size = file_path.stat().st_size
+                    # Filter by max size if provided
+                    if max_size is not None and size > max_size:
+                        continue
                     files_with_info.append((file_path, size, input_dir))
                 except OSError as e:
                     print(f"--> [Warning] Could not access file stats for '{file_path}': {e}")
@@ -86,6 +89,7 @@ def main():
     
     # Execution Modifiers
     parser.add_argument("-r", "--recursive", action="store_true", help="Include subfolders recursively for directory inputs.")
+    parser.add_argument("--max", type=int, help="Maximum file size in bytes. Files larger than this will be excluded.")
 
     # Content filters (Only apply to folders)
     filter_group = parser.add_mutually_exclusive_group()
@@ -108,10 +112,14 @@ def main():
             
         if input_path.is_file():
             # Explicitly added files skip the extension filter checks
-            found_files.append((input_path, input_path.stat().st_size, None))
+            size = input_path.stat().st_size
+            if args.max is not None and size > args.max:
+                print(f"⚠️ Skipping explicitly provided file '{input_str}' as it exceeds the maximum size limit ({size} > {args.max} bytes).")
+                continue
+            found_files.append((input_path, size, None))
             
         elif input_path.is_dir():
-            found_files.extend(find_files_to_process(input_path, args.code_only, args.py_only, args.recursive))
+            found_files.extend(find_files_to_process(input_path, args.code_only, args.py_only, args.recursive, args.max))
 
     # Remove duplicates (in case explicitly listed files overlap with directory searches)
     unique_files = {}
