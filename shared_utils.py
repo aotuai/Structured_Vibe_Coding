@@ -66,9 +66,21 @@ def summary(command_args, files_with_sizes, commit_id=None, target_dir="."):
     sorted_files = sorted(files_with_sizes, key=lambda x: x[1], reverse=True)
     
     lines = [
-        "=== EXECUTION SUMMARY ===",
-        f"Command Arguments   : {' '.join(command_args)}"
+        "=" * 80,
+        "Files Included:",
     ]
+    
+    # 1. List Files Included first
+    if not sorted_files:
+        lines.append("  (No files)")
+    else:
+        for f_path, f_size in sorted_files:
+            lines.append(f"  - [{format_size(f_size).rjust(10)}] {f_path}")
+            
+    # 2. Execution metadata
+    lines.append(f"")
+    lines.append(f"=== EXECUTION SUMMARY ===")
+    lines.append(f"Command Arguments   : {' '.join(command_args)}")
     
     # Add target commit parameter (mostly used by save_commits.py)
     if commit_id:
@@ -82,15 +94,6 @@ def summary(command_args, files_with_sizes, commit_id=None, target_dir="."):
         
     lines.append(f"Total Size          : {format_size(total_size_bytes)}")
     lines.append(f"Total Files         : {len(sorted_files)}")
-    lines.append("Files Included      :")
-    
-    if not sorted_files:
-        lines.append("  (No files)")
-    else:
-        for f_path, f_size in sorted_files:
-            lines.append(f"  - [{format_size(f_size).rjust(10)}] {f_path}")
-            
-    lines.append("=" * 80 + "\n")
     return "\n".join(lines)
 
 def write_concatenated_artifact(output_file, file_items, summary_text):
