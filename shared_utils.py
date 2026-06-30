@@ -63,7 +63,9 @@ def summary(command_args, files_with_sizes, commit_id=None, target_dir="."):
     files_with_sizes: list of tuples (file_path_string, size_in_bytes)
     """
     total_size_bytes = sum(size for _, size in files_with_sizes)
-    sorted_files = sorted(files_with_sizes, key=lambda x: x[1], reverse=True)
+    
+    # Sort files in ascending order by size
+    sorted_files = sorted(files_with_sizes, key=lambda x: x[1])
     
     lines = [
         "=" * 80,
